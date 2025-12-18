@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useStory } from "@/store/StoryContext";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Copy, Download, Check, FileText, FileJson, RotateCcw } from "lucide-react";
+import { ArrowLeft, Copy, Download, Check, FileText, FileJson, RotateCcw, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type ExportFormat = "markdown" | "json";
@@ -19,6 +19,7 @@ export function ExportStep() {
 
   const [format, setFormat] = useState<ExportFormat>("markdown");
   const [copied, setCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -144,6 +145,33 @@ _Generiert mit User Story Quality Assistant_
     });
   };
 
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const savedId = await actions.saveStoryAction();
+      if (savedId) {
+        toast({
+          title: "Gespeichert!",
+          description: "Die Story wurde erfolgreich in der Datenbank gespeichert.",
+        });
+      } else {
+        toast({
+          title: "Fehler",
+          description: "Story konnte nicht gespeichert werden.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Fehler",
+        description: "Speichern fehlgeschlagen.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-slide-up">
       <div>
@@ -181,8 +209,20 @@ _Generiert mit User Story Quality Assistant_
         </pre>
       </div>
 
+      {/* Save Button */}
+      <Button 
+        className="w-full" 
+        size="lg" 
+        onClick={handleSave}
+        disabled={isSaving}
+        variant="default"
+      >
+        <Save className="h-4 w-4 mr-2" />
+        {isSaving ? "Speichert..." : "In Datenbank speichern"}
+      </Button>
+
       {/* Copy Button */}
-      <Button className="w-full" size="lg" onClick={handleCopy}>
+      <Button className="w-full" size="lg" variant="outline" onClick={handleCopy}>
         {copied ? (
           <Check className="h-4 w-4 mr-2" />
         ) : (
