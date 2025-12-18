@@ -10,6 +10,15 @@ const corsHeaders = {
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 
+// Sanitize text to remove invalid Unicode escape sequences that PostgreSQL doesn't support
+function sanitizeText(text: string): string {
+  // Remove null characters and other problematic Unicode escape sequences
+  return text
+    .replace(/\u0000/g, '') // Remove null characters
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Remove control characters except tab, newline, carriage return
+    .replace(/\\u0000/g, ''); // Remove escaped null character sequences
+}
+
 // Semantic chunking: split by paragraphs/sentences while respecting size limits
 function semanticChunk(text: string): string[] {
   const chunks: string[] = [];
@@ -137,12 +146,14 @@ serve(async (req) => {
     }
 
     // Extract text (for now, assume text-based files)
-    const text = await fileData.text();
+    let text = await fileData.text();
     
     if (!text || text.length < 10) {
       throw new Error('Document is empty or too short');
     }
 
+    // Sanitize text to remove problematic characters
+    text = sanitizeText(text);
     console.log(`[embed-document] Extracted ${text.length} characters`);
 
     // Semantic chunking
@@ -158,7 +169,7 @@ serve(async (req) => {
     // Process chunks and generate embeddings
     const chunkRecords = [];
     for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+      const chunk = sanitizeText(chunks[i]); // Extra sanitization for safety
       console.log(`[embed-document] Embedding chunk ${i + 1}/${chunks.length}`);
       
       const embedding = await generateEmbedding(chunk, openaiKey);
@@ -170,7 +181,7 @@ serve(async (req) => {
         content: chunk,
         embedding: JSON.stringify(embedding),
         metadata: {
-          document_name: document.name,
+          document_name: sanitizeText(document.name),
           chunk_position: i,
           total_chunks: chunks.length,
         },
