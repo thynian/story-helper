@@ -364,6 +364,9 @@ interface StoryContextValue {
     // Export
     generateExportMarkdown: () => string;
     
+    // Persistence
+    saveStoryAction: () => Promise<string | null>;
+    
     // LLM Actions
     analyzeStoryAction: () => Promise<void>;
     runFullPipelineAction: () => Promise<void>;
@@ -387,42 +390,6 @@ interface StoryProviderProps {
 export function StoryProvider({ children }: StoryProviderProps) {
   const [state, dispatch] = useReducer(storyReducer, initialState);
   const storyIdRef = useRef<string | null>(null);
-  const lastSavedRef = useRef<string>('');
-
-  // Auto-save effect
-  useEffect(() => {
-    const performSave = async () => {
-      if (!state.originalStoryText || state.originalStoryText.trim() === '') {
-        return;
-      }
-
-      const stateHash = JSON.stringify({
-        originalStoryText: state.originalStoryText,
-        optimisedStoryText: state.optimisedStoryText,
-        structuredStory: state.structuredStory,
-        analysisIssues: state.analysisIssues,
-        rewriteCandidates: state.rewriteCandidates,
-        acceptanceCriteria: state.acceptanceCriteria,
-        userDecisions: state.userDecisions,
-      });
-
-      if (stateHash === lastSavedRef.current) {
-        return;
-      }
-
-      console.log('[AutoSave] Saving story...');
-      const savedId = await saveStory(state, storyIdRef.current || undefined);
-      
-      if (savedId) {
-        storyIdRef.current = savedId;
-        lastSavedRef.current = stateHash;
-        console.log('[AutoSave] Story saved with ID:', savedId);
-      }
-    };
-
-    const timeoutId = setTimeout(performSave, 5000);
-    return () => clearTimeout(timeoutId);
-  }, [state]);
 
   const setOriginalStory = useCallback((text: string) => {
     dispatch({ type: 'SET_ORIGINAL_STORY', payload: text });
@@ -900,6 +867,23 @@ ${contextText}
     }
   }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets, state.meta.promptVersion]);
 
+  // Manual save action
+  const saveStoryAction = useCallback(async (): Promise<string | null> => {
+    if (!state.originalStoryText || state.originalStoryText.trim() === '') {
+      return null;
+    }
+
+    console.log('[Save] Saving story...');
+    const savedId = await saveStory(state, storyIdRef.current || undefined);
+    
+    if (savedId) {
+      storyIdRef.current = savedId;
+      console.log('[Save] Story saved with ID:', savedId);
+    }
+    
+    return savedId;
+  }, [state]);
+
   const actions = {
     setOriginalStory,
     setOptimisedStory,
@@ -926,6 +910,7 @@ ${contextText}
     reset,
     setRuntimeConfig,
     generateExportMarkdown,
+    saveStoryAction,
     analyzeStoryAction,
     runFullPipelineAction,
     rewriteStoryAction,
