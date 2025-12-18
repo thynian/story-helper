@@ -6,10 +6,125 @@ const corsHeaders = {
 };
 
 type Operation = 'analyze' | 'rewrite' | 'acceptance_criteria';
+type PromptVersion = 'v1';
+
+// ============================================================================
+// VERSIONED PROMPT TEMPLATES
+// ============================================================================
+
+const PROMPT_V1_ANALYZE = `Du bist ein erfahrener User Story Analyst. Deine Aufgabe ist es, User Stories auf Qualitätsprobleme zu analysieren.
+
+WICHTIGE REGELN:
+1. Analysiere NUR den gegebenen Text – erfinde KEINE neuen fachlichen Informationen
+2. Markiere Unsicherheiten explizit mit "[UNSICHER]" wenn du dir nicht sicher bist
+3. Beziehe dich auf konkrete Textstellen (Zeilenreferenz oder Zitat)
+4. Antworte AUSSCHLIESSLICH mit validem JSON
+
+KATEGORIEN für Issues:
+- "completeness": Fehlende Informationen (Rolle, Ziel, Nutzen)
+- "clarity": Unklare oder mehrdeutige Formulierungen
+- "testability": Nicht testbare oder zu vage Kriterien
+- "scope": Zu großer oder vermischter Umfang
+- "consistency": Widersprüche im Text
+
+AUSGABEFORMAT (JSON):
+{
+  "issues": [
+    {
+      "id": "issue_1",
+      "category": "completeness|clarity|testability|scope|consistency",
+      "severity": "low|medium|high",
+      "textReference": "Betroffene Textstelle oder Zitat",
+      "reasoning": "Begründung warum dies ein Problem ist",
+      "clarificationQuestion": "Optionale Rückfrage an den Autor",
+      "confidence": "high|medium|low"
+    }
+  ],
+  "score": 0-100,
+  "summary": "Kurze Zusammenfassung der Hauptprobleme"
+}`;
+
+const PROMPT_V1_REWRITE = `Du bist ein User Story Experte. Deine Aufgabe ist es, verbesserte Versionen einer User Story zu erstellen.
+
+WICHTIGE REGELN:
+1. Basiere Rewrites NUR auf den gegebenen Informationen – erfinde KEINE neuen fachlichen Details
+2. Wenn Informationen fehlen, markiere Lücken mit [PLATZHALTER: Beschreibung]
+3. Erkläre jede Änderung nachvollziehbar
+4. Markiere Unsicherheiten mit "[UNSICHER]"
+5. Antworte AUSSCHLIESSLICH mit validem JSON
+
+AUSGABEFORMAT (JSON):
+{
+  "candidates": [
+    {
+      "id": "candidate_1",
+      "text": "Als [Rolle] möchte ich [Ziel], damit [Nutzen].",
+      "explanation": "Begründung für diese Version",
+      "addressedIssues": ["issue_1", "issue_2"],
+      "changes": [
+        {"type": "added|removed|modified", "description": "Was wurde geändert"}
+      ],
+      "confidence": "high|medium|low",
+      "openQuestions": ["Fragen die noch geklärt werden müssen"]
+    }
+  ]
+}
+
+Erstelle 2-3 verschiedene Varianten mit unterschiedlichen Schwerpunkten.`;
+
+const PROMPT_V1_AC = `Du bist ein Experte für Akzeptanzkriterien. Deine Aufgabe ist es, testbare Akzeptanzkriterien im Given-When-Then Format zu erstellen.
+
+WICHTIGE REGELN:
+1. Leite Kriterien NUR aus der gegebenen Story ab – erfinde KEINE neuen fachlichen Anforderungen
+2. Jedes Kriterium muss konkret testbar sein
+3. Markiere Annahmen explizit mit "[ANNAHME]"
+4. Markiere Unsicherheiten mit "[UNSICHER]"
+5. Antworte AUSSCHLIESSLICH mit validem JSON
+
+AUSGABEFORMAT (JSON):
+{
+  "criteria": [
+    {
+      "id": "ac_1",
+      "title": "Kurzer beschreibender Titel",
+      "given": "Vorbedingung/Ausgangssituation",
+      "when": "Auslösende Aktion",
+      "then": "Erwartetes Ergebnis",
+      "notes": "Optionale Anmerkungen oder Annahmen",
+      "priority": "must|should|could",
+      "confidence": "high|medium|low"
+    }
+  ],
+  "coverage": {
+    "mainFlow": true|false,
+    "errorCases": true|false,
+    "edgeCases": true|false
+  },
+  "openQuestions": ["Fragen die für vollständige AC geklärt werden müssen"]
+}
+
+Erstelle 3-5 relevante Kriterien. Priorisiere den Hauptanwendungsfall.`;
+
+// ============================================================================
+// PROMPT VERSION REGISTRY
+// ============================================================================
+
+const PROMPT_TEMPLATES: Record<PromptVersion, Record<Operation, string>> = {
+  v1: {
+    analyze: PROMPT_V1_ANALYZE,
+    rewrite: PROMPT_V1_REWRITE,
+    acceptance_criteria: PROMPT_V1_AC,
+  },
+};
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface LLMRequest {
   operation: Operation;
   storyText: string;
+  promptVersion?: PromptVersion;
   structuredStory?: {
     role?: string;
     goal?: string;
@@ -17,23 +132,36 @@ interface LLMRequest {
     constraints?: string[];
   };
   context?: string;
+  relevantIssues?: Array<{
+    category: string;
+    reasoning: string;
+    userNote?: string;
+  }>;
 }
 
 interface AnalyzeResponse {
   issues: Array<{
+    id: string;
     category: string;
     severity: 'low' | 'medium' | 'high';
-    message: string;
+    textReference?: string;
+    reasoning: string;
+    clarificationQuestion?: string;
+    confidence?: string;
   }>;
   score: number;
-  suggestions: string[];
+  summary?: string;
 }
 
 interface RewriteResponse {
   candidates: Array<{
     id: string;
     text: string;
-    improvements: string[];
+    explanation: string;
+    addressedIssues?: string[];
+    changes?: Array<{ type: string; description: string }>;
+    confidence?: string;
+    openQuestions?: string[];
   }>;
 }
 
@@ -44,42 +172,31 @@ interface AcceptanceCriteriaResponse {
     given: string;
     when: string;
     then: string;
+    notes?: string;
+    priority?: string;
+    confidence?: string;
   }>;
+  coverage?: {
+    mainFlow: boolean;
+    errorCases: boolean;
+    edgeCases: boolean;
+  };
+  openQuestions?: string[];
 }
 
 type LLMResponse = AnalyzeResponse | RewriteResponse | AcceptanceCriteriaResponse;
 
-function getSystemPrompt(operation: Operation): string {
-  switch (operation) {
-    case 'analyze':
-      return `Du bist ein User Story Analyst. Analysiere die gegebene User Story und identifiziere Probleme.
-Antworte NUR mit validem JSON in diesem Format:
-{
-  "issues": [{"category": "completeness|clarity|testability|scope", "severity": "low|medium|high", "message": "Beschreibung"}],
-  "score": 0-100,
-  "suggestions": ["Verbesserungsvorschlag 1", "Verbesserungsvorschlag 2"]
-}`;
-    
-    case 'rewrite':
-      return `Du bist ein User Story Experte. Erstelle verbesserte Versionen der User Story.
-Antworte NUR mit validem JSON in diesem Format:
-{
-  "candidates": [
-    {"id": "1", "text": "Als [Rolle] möchte ich [Ziel], damit [Nutzen].", "improvements": ["Verbesserung 1", "Verbesserung 2"]}
-  ]
-}
-Erstelle 2-3 Varianten.`;
-    
-    case 'acceptance_criteria':
-      return `Du bist ein Akzeptanzkriterien-Experte. Erstelle Akzeptanzkriterien im Given-When-Then Format.
-Antworte NUR mit validem JSON in diesem Format:
-{
-  "criteria": [
-    {"id": "1", "title": "Kriterium Titel", "given": "Vorbedingung", "when": "Aktion", "then": "Erwartetes Ergebnis"}
-  ]
-}
-Erstelle 3-5 relevante Kriterien.`;
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function getSystemPrompt(operation: Operation, version: PromptVersion = 'v1'): string {
+  const templates = PROMPT_TEMPLATES[version];
+  if (!templates) {
+    console.warn(`Unknown prompt version: ${version}, falling back to v1`);
+    return PROMPT_TEMPLATES.v1[operation];
   }
+  return templates[operation];
 }
 
 function validateResponse(operation: Operation, data: unknown): data is LLMResponse {
@@ -89,7 +206,7 @@ function validateResponse(operation: Operation, data: unknown): data is LLMRespo
   
   switch (operation) {
     case 'analyze':
-      return Array.isArray(obj.issues) && typeof obj.score === 'number' && Array.isArray(obj.suggestions);
+      return Array.isArray(obj.issues) && typeof obj.score === 'number';
     case 'rewrite':
       return Array.isArray(obj.candidates) && obj.candidates.length > 0;
     case 'acceptance_criteria':
@@ -145,8 +262,11 @@ async function callLLM(prompt: string, systemPrompt: string, apiKey: string): Pr
   return JSON.parse(jsonStr);
 }
 
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -158,7 +278,7 @@ serve(async (req) => {
     }
 
     const body: LLMRequest = await req.json();
-    const { operation, storyText, structuredStory, context } = body;
+    const { operation, storyText, promptVersion = 'v1', structuredStory, context, relevantIssues } = body;
 
     if (!operation || !['analyze', 'rewrite', 'acceptance_criteria'].includes(operation)) {
       return new Response(
@@ -174,7 +294,9 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = getSystemPrompt(operation);
+    console.log(`Processing ${operation} request with promptVersion=${promptVersion}`);
+
+    const systemPrompt = getSystemPrompt(operation, promptVersion);
     let userPrompt = `User Story:\n${storyText}`;
     
     if (structuredStory) {
@@ -185,10 +307,21 @@ serve(async (req) => {
     }
     
     if (context) {
-      userPrompt += `\n\nZusätzlicher Kontext:\n${context}`;
+      userPrompt += `\n\nZusätzlicher Kontext vom Nutzer:\n${context}`;
     }
 
-    console.log(`Processing ${operation} request for story: ${storyText.substring(0, 100)}...`);
+    // Include relevant issues for rewrite operation
+    if (operation === 'rewrite' && relevantIssues?.length) {
+      userPrompt += `\n\nRelevante Analyse-Issues die adressiert werden sollen:`;
+      relevantIssues.forEach((issue, i) => {
+        userPrompt += `\n${i + 1}. [${issue.category}] ${issue.reasoning}`;
+        if (issue.userNote) {
+          userPrompt += ` (Nutzer-Notiz: ${issue.userNote})`;
+        }
+      });
+    }
+
+    console.log(`User prompt length: ${userPrompt.length} chars`);
 
     // First attempt
     let result: unknown;
@@ -199,7 +332,7 @@ serve(async (req) => {
       isValid = validateResponse(operation, result);
       
       if (!isValid) {
-        console.log('First attempt invalid, retrying...');
+        console.log('First attempt invalid response structure, retrying...');
       }
     } catch (error) {
       console.error('First attempt failed:', error);
@@ -208,7 +341,11 @@ serve(async (req) => {
     // Retry once if invalid
     if (!isValid) {
       try {
-        result = await callLLM(userPrompt + '\n\nWICHTIG: Antworte NUR mit validem JSON, ohne zusätzlichen Text.', systemPrompt, apiKey);
+        result = await callLLM(
+          userPrompt + '\n\nWICHTIG: Antworte NUR mit validem JSON gemäß dem vorgegebenen Format.',
+          systemPrompt,
+          apiKey
+        );
         isValid = validateResponse(operation, result);
       } catch (error) {
         console.error('Retry attempt failed:', error);
@@ -226,10 +363,14 @@ serve(async (req) => {
       );
     }
 
-    console.log(`${operation} completed successfully`);
+    console.log(`${operation} completed successfully with promptVersion=${promptVersion}`);
 
     return new Response(
-      JSON.stringify({ success: true, data: result }),
+      JSON.stringify({ 
+        success: true, 
+        data: result,
+        meta: { promptVersion }
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

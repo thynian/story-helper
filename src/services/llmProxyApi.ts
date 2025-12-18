@@ -7,6 +7,7 @@ import { AnalysisIssue, RewriteCandidate, AcceptanceCriterion, StructuredStory, 
 interface LLMProxyRequest {
   operation: 'analyze' | 'rewrite' | 'acceptance_criteria';
   storyText: string;
+  promptVersion?: string;
   structuredStory?: {
     role?: string;
     goal?: string;
@@ -14,26 +15,39 @@ interface LLMProxyRequest {
     constraints?: string[];
   };
   context?: string;
+  relevantIssues?: Array<{
+    category: string;
+    reasoning: string;
+    userNote?: string;
+  }>;
 }
 
 // ============================================
-// Response Types from Backend
+// Response Types from Backend (v1)
 // ============================================
 interface AnalyzeApiResponse {
   issues: Array<{
+    id: string;
     category: string;
     severity: 'low' | 'medium' | 'high';
-    message: string;
+    textReference?: string;
+    reasoning: string;
+    clarificationQuestion?: string;
+    confidence?: string;
   }>;
   score: number;
-  suggestions: string[];
+  summary?: string;
 }
 
 interface RewriteApiResponse {
   candidates: Array<{
     id: string;
     text: string;
-    improvements: string[];
+    explanation: string;
+    addressedIssues?: string[];
+    changes?: Array<{ type: string; description: string }>;
+    confidence?: string;
+    openQuestions?: string[];
   }>;
 }
 
@@ -44,7 +58,16 @@ interface AcceptanceCriteriaApiResponse {
     given: string;
     when: string;
     then: string;
+    notes?: string;
+    priority?: string;
+    confidence?: string;
   }>;
+  coverage?: {
+    mainFlow: boolean;
+    errorCases: boolean;
+    edgeCases: boolean;
+  };
+  openQuestions?: string[];
 }
 
 // ============================================
@@ -104,6 +127,7 @@ function mapCategory(category: string): AnalysisIssue['category'] {
     'clarity': 'vague_language',
     'testability': 'not_testable',
     'scope': 'too_long',
+    'consistency': 'other',
   };
   return categoryMap[category] || 'other';
 }
@@ -111,9 +135,18 @@ function mapCategory(category: string): AnalysisIssue['category'] {
 // ============================================
 // Build context string from snippets
 // ============================================
-function buildContextString(snippets: ContextSnippet[]): string | undefined {
-  if (!snippets || snippets.length === 0) return undefined;
-  return snippets.map(s => `${s.source ? `[${s.source}] ` : ''}${s.text}`).join('\n\n');
+function buildContextString(snippets: ContextSnippet[], additionalContext?: string): string | undefined {
+  const parts: string[] = [];
+  
+  if (snippets && snippets.length > 0) {
+    parts.push(snippets.map(s => `${s.source ? `[${s.source}] ` : ''}${s.text}`).join('\n\n'));
+  }
+  
+  if (additionalContext?.trim()) {
+    parts.push(additionalContext.trim());
+  }
+  
+  return parts.length > 0 ? parts.join('\n\n---\n\n') : undefined;
 }
 
 // ============================================
@@ -122,27 +155,33 @@ function buildContextString(snippets: ContextSnippet[]): string | undefined {
 export async function analyzeStoryApi(
   storyText: string,
   structuredStory: StructuredStory | null,
-  contextSnippets: ContextSnippet[]
+  contextSnippets: ContextSnippet[],
+  additionalContext?: string,
+  promptVersion: string = 'v1'
 ): Promise<AnalyzeResult> {
   const response = await callLLMProxy<AnalyzeApiResponse>({
     operation: 'analyze',
     storyText,
+    promptVersion,
     structuredStory: structuredStory ? {
       role: structuredStory.role,
       goal: structuredStory.goal,
       benefit: structuredStory.benefit,
       constraints: structuredStory.constraints,
     } : undefined,
-    context: buildContextString(contextSnippets),
+    context: buildContextString(contextSnippets, additionalContext),
   });
 
   // Map API response to internal format
-  const issues: AnalysisIssue[] = response.issues.map((issue, index) => ({
-    id: generateId(),
+  const issues: AnalysisIssue[] = response.issues.map((issue) => ({
+    id: issue.id || generateId(),
     category: mapCategory(issue.category),
-    textReference: issue.message,
-    reasoning: issue.message,
+    textReference: issue.textReference || '',
+    reasoning: issue.reasoning,
     severity: mapSeverity(issue.severity),
+    clarificationQuestion: issue.clarificationQuestion,
+    isRelevant: false,
+    userNote: '',
   }));
 
   return {
@@ -151,14 +190,23 @@ export async function analyzeStoryApi(
   };
 }
 
+export interface RelevantIssue {
+  category: string;
+  reasoning: string;
+  userNote?: string;
+}
+
 export async function rewriteStoryApi(
   storyText: string,
   structuredStory: StructuredStory | null,
-  contextSnippets: ContextSnippet[]
+  contextSnippets: ContextSnippet[],
+  relevantIssues?: RelevantIssue[],
+  promptVersion: string = 'v1'
 ): Promise<RewriteResult> {
   const response = await callLLMProxy<RewriteApiResponse>({
     operation: 'rewrite',
     storyText,
+    promptVersion,
     structuredStory: structuredStory ? {
       role: structuredStory.role,
       goal: structuredStory.goal,
@@ -166,13 +214,14 @@ export async function rewriteStoryApi(
       constraints: structuredStory.constraints,
     } : undefined,
     context: buildContextString(contextSnippets),
+    relevantIssues,
   });
 
   // Map API response to internal format
   const candidates: RewriteCandidate[] = response.candidates.map((candidate) => ({
     id: candidate.id || generateId(),
     suggestedText: candidate.text,
-    explanation: candidate.improvements.join(', '),
+    explanation: candidate.explanation,
     createdAt: createTimestamp(),
   }));
 
@@ -182,11 +231,13 @@ export async function rewriteStoryApi(
 export async function generateAcceptanceCriteriaApi(
   storyText: string,
   structuredStory: StructuredStory | null,
-  contextSnippets: ContextSnippet[]
+  contextSnippets: ContextSnippet[],
+  promptVersion: string = 'v1'
 ): Promise<AcceptanceCriteriaResult> {
   const response = await callLLMProxy<AcceptanceCriteriaApiResponse>({
     operation: 'acceptance_criteria',
     storyText,
+    promptVersion,
     structuredStory: structuredStory ? {
       role: structuredStory.role,
       goal: structuredStory.goal,
@@ -202,7 +253,7 @@ export async function generateAcceptanceCriteriaApi(
     given: c.given,
     when: c.when,
     then: c.then,
-    notes: c.title,
+    notes: c.notes || c.title,
   }));
 
   return { criteria };

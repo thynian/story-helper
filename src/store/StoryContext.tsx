@@ -58,8 +58,8 @@ const initialState: StoryState = {
   // Meta Information
   meta: {
     projectId: generateId(),
-    promptVersion: '1.0.0',
-    modelId: 'mock-model',
+    promptVersion: 'v1',
+    modelId: 'gpt-4o-mini',
     lastRunAt: null,
   },
 
@@ -551,7 +551,13 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const result = await analyzeStoryApi(storyText, state.structuredStory, state.contextSnippets);
+      const result = await analyzeStoryApi(
+        storyText,
+        state.structuredStory,
+        state.contextSnippets,
+        state.additionalContext,
+        state.meta.promptVersion
+      );
       dispatch({ type: 'SET_ANALYSIS_ISSUES', payload: result.issues });
       dispatch({ type: 'SET_ANALYSIS_SCORE', payload: result.score });
       dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
@@ -561,7 +567,7 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets]);
+  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets, state.additionalContext, state.meta.promptVersion]);
 
   const rewriteStoryAction = useCallback(async () => {
     const storyText = state.optimisedStoryText || state.originalStoryText;
@@ -574,7 +580,22 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const result = await rewriteStoryApi(storyText, state.structuredStory, state.contextSnippets);
+      // Get relevant issues with user notes
+      const relevantIssues = state.analysisIssues
+        .filter((issue) => issue.isRelevant)
+        .map((issue) => ({
+          category: issue.category,
+          reasoning: issue.reasoning,
+          userNote: issue.userNote || undefined,
+        }));
+
+      const result = await rewriteStoryApi(
+        storyText,
+        state.structuredStory,
+        state.contextSnippets,
+        relevantIssues.length > 0 ? relevantIssues : undefined,
+        state.meta.promptVersion
+      );
       dispatch({ type: 'SET_REWRITE_CANDIDATES', payload: result.candidates });
       dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
     } catch (error) {
@@ -583,7 +604,7 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets]);
+  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets, state.analysisIssues, state.meta.promptVersion]);
 
   const generateAcceptanceCriteriaAction = useCallback(async () => {
     const storyText = state.optimisedStoryText || state.originalStoryText;
@@ -596,7 +617,12 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const result = await generateAcceptanceCriteriaApi(storyText, state.structuredStory, state.contextSnippets);
+      const result = await generateAcceptanceCriteriaApi(
+        storyText,
+        state.structuredStory,
+        state.contextSnippets,
+        state.meta.promptVersion
+      );
       dispatch({ type: 'SET_ACCEPTANCE_CRITERIA', payload: result.criteria });
       dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
     } catch (error) {
@@ -605,7 +631,7 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets]);
+  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets, state.meta.promptVersion]);
 
   const actions = {
     setOriginalStory,
