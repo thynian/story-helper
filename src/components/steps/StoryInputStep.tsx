@@ -136,15 +136,44 @@ export function StoryInputStep() {
   };
 
   const handleSaveAndStructure = () => {
-    if (!story.trim()) return;
+    const trimmed = story.trim();
+    if (!trimmed) {
+      toast({
+        title: 'Bitte eine User Story eingeben',
+        description: 'Ohne Text kann ich nichts strukturieren.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-    actions.setOriginalStory(story.trim());
-    actions.setOptimisedStory(story.trim());
+    actions.setOriginalStory(trimmed);
+    actions.setOptimisedStory(trimmed);
 
-    const structured = parseUserStory(story.trim());
-    if (structured) {
-      actions.setStructuredStory(structured);
-      setParsedPreview(structured);
+    const parsed = parseUserStory(trimmed);
+    const structured: StructuredStoryModel = parsed ?? {
+      role: 'Nicht erkannt',
+      goal: 'Nicht erkannt',
+      benefit: 'Nicht angegeben',
+      constraints: [],
+      existingAcceptanceCriteria: [],
+      implicitAssumptions: [],
+      parseConfidence: 'low',
+    };
+
+    actions.setStructuredStory(structured);
+    setParsedPreview(structured);
+
+    if (!parsed) {
+      toast({
+        title: 'Story konnte nicht automatisch erkannt werden',
+        description: 'Tipp: Nutze z.B. „Als [Rolle] möchte ich [Ziel], damit [Nutzen] …“ – ich zeige dir dennoch eine Vorschau.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Story strukturiert',
+        description: 'Vorschau erstellt – du kannst jetzt mit „Zur Analyse“ fortfahren.',
+      });
     }
 
     actions.addVersionHistory('initial', 'Original Story eingegeben und strukturiert');
@@ -332,10 +361,9 @@ export function StoryInputStep() {
 
       {/* Save & Structure Button */}
       <div className="pt-2">
-        <Button 
+        <Button
           type="button"
-          onClick={handleSaveAndStructure} 
-          disabled={!story.trim()}
+          onClick={handleSaveAndStructure}
           className="gap-2"
         >
           <Sparkles className="h-4 w-4" />
