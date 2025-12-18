@@ -173,12 +173,12 @@ export function StoryInputStep() {
         <Label className="text-sm font-medium">
           Projekt auswählen <span className="text-muted-foreground text-xs">(optional)</span>
         </Label>
-        <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+        <Select value={selectedProjectId || "__none__"} onValueChange={(val) => setSelectedProjectId(val === "__none__" ? "" : val)}>
           <SelectTrigger className="max-w-md">
             <SelectValue placeholder={isLoadingProjects ? "Lade Projekte..." : "Projekt auswählen"} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Kein Projekt</SelectItem>
+            <SelectItem value="__none__">Kein Projekt</SelectItem>
             {projects.map((project) => (
               <SelectItem key={project.id} value={project.id}>
                 {project.name}
