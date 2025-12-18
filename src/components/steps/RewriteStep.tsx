@@ -4,20 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingState } from "@/components/wizard/LoadingState";
 import { ErrorState } from "@/components/wizard/ErrorState";
-import { ArrowLeft, ArrowRight, Sparkles, Check, Pencil, X, RefreshCw, AlertTriangle, Info } from "lucide-react";
-import { RewriteCandidate, IssueCategory } from "@/types/storyState";
+import { ArrowLeft, ArrowRight, Sparkles, Check, Pencil, X, RefreshCw, AlertTriangle, AlertOctagon, Info } from "lucide-react";
+import { RewriteSuggestion, IssueCategory, IssueSeverity } from "@/types/storyTypes";
 import { cn } from "@/lib/utils";
 
 const categoryLabels: Record<IssueCategory, string> = {
+  ambiguity: "Mehrdeutigkeit",
   missing_role: "Fehlende Rolle",
   missing_goal: "Fehlendes Ziel",
   missing_benefit: "Fehlender Nutzen",
   vague_language: "Unklare Sprache",
-  too_long: "Zu lang",
-  too_short: "Zu kurz",
+  too_broad_scope: "Zu breiter Umfang",
+  solution_bias: "Lösungsvorgabe",
+  persona_unclear: "Unklare Persona",
+  business_value_gap: "Fehlender Business Value",
+  not_testable: "Nicht testbar",
+  inconsistency: "Widerspruch",
   missing_context: "Fehlender Kontext",
   technical_debt: "Technische Schuld",
-  not_testable: "Nicht testbar",
   other: "Sonstiges",
 };
 
@@ -44,25 +48,25 @@ export function RewriteStep() {
     await actions.rewriteStoryAction();
   };
 
-  const handleAccept = (candidate: RewriteCandidate) => {
+  const handleAccept = (candidate: RewriteSuggestion) => {
     actions.acceptRewrite(candidate.id);
     actions.addVersionHistory('rewrite_accepted', `Rewrite übernommen: "${candidate.suggestedText.slice(0, 50)}..."`);
     actions.markStepCompleted('rewrite');
   };
 
-  const handleStartEdit = (candidate: RewriteCandidate) => {
+  const handleStartEdit = (candidate: RewriteSuggestion) => {
     setEditingId(candidate.id);
     setEditText(candidate.suggestedText);
   };
 
-  const handleSaveEdit = (candidate: RewriteCandidate) => {
+  const handleSaveEdit = (candidate: RewriteSuggestion) => {
     actions.acceptRewrite(candidate.id, editText);
     actions.addVersionHistory('rewrite_accepted', `Rewrite bearbeitet und übernommen`);
     actions.markStepCompleted('rewrite');
     setEditingId(null);
   };
 
-  const handleReject = (candidate: RewriteCandidate) => {
+  const handleReject = (candidate: RewriteSuggestion) => {
     actions.rejectRewrite(candidate.id);
   };
 
@@ -70,14 +74,16 @@ export function RewriteStep() {
     actions.goToStep('analysis');
   };
 
-  const getIssueIcon = (severity: 'error' | 'warning' | 'info') => {
+  const getIssueIcon = (severity: IssueSeverity) => {
     switch (severity) {
-      case "error":
-        return <AlertTriangle className="h-3 w-3 text-destructive" />;
-      case "warning":
+      case "critical":
+        return <AlertOctagon className="h-3 w-3 text-destructive" />;
+      case "major":
         return <AlertTriangle className="h-3 w-3 text-warning" />;
-      case "info":
+      case "minor":
         return <Info className="h-3 w-3 text-primary" />;
+      case "info":
+        return <Info className="h-3 w-3 text-muted-foreground" />;
     }
   };
 

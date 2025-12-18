@@ -1,10 +1,10 @@
-import { StructuredStory } from '@/types/storyState';
+import { StructuredStoryModel } from '@/types/storyTypes';
 
 /**
  * Heuristic parser to extract Role/Goal/Benefit from a user story text.
  * Supports German "Als/Möchte ich/Damit" and English "As a/I want/So that" formats.
  */
-export function parseUserStory(text: string): StructuredStory | null {
+export function parseUserStory(text: string): StructuredStoryModel | null {
   const normalizedText = text.trim();
   
   if (!normalizedText) {
@@ -77,11 +77,20 @@ export function parseUserStory(text: string): StructuredStory | null {
     }
   });
 
+  // Determine parse confidence
+  let parseConfidence: 'high' | 'medium' | 'low' = 'low';
+  const filledFields = [role, goal, benefit].filter(f => f && f !== 'Nicht erkannt' && f !== 'Nicht angegeben').length;
+  if (filledFields === 3) parseConfidence = 'high';
+  else if (filledFields >= 2) parseConfidence = 'medium';
+
   return {
     role: role || 'Nicht erkannt',
     goal: goal || 'Nicht erkannt',
     benefit: benefit || 'Nicht angegeben',
-    constraints: constraints.length > 0 ? constraints : undefined,
+    constraints: constraints,
+    existingAcceptanceCriteria: [],
+    implicitAssumptions: [],
+    parseConfidence,
   };
 }
 
@@ -98,7 +107,7 @@ function cleanExtractedText(text: string): string {
 /**
  * Calculate completeness score for a structured story
  */
-export function calculateCompletenessScore(story: StructuredStory): number {
+export function calculateCompletenessScore(story: StructuredStoryModel): number {
   let score = 0;
   
   if (story.role && story.role !== 'Nicht erkannt') score += 35;

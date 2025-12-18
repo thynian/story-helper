@@ -17,7 +17,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { parseUserStory, calculateCompletenessScore } from "@/lib/storyParser";
-import { StructuredStory, generateId, createTimestamp } from "@/types/storyState";
+import { StructuredStoryModel, generateId, createTimestamp } from "@/types/storyTypes";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_STORY = `Als Benutzer möchte ich mich einloggen können, damit ich auf mein Konto zugreifen kann.`;
@@ -27,7 +27,7 @@ export function StoryInputStep() {
   const [story, setStory] = useState(state.originalStoryText);
   const [projectId, setProjectId] = useState(state.meta.projectId);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [parsedPreview, setParsedPreview] = useState<StructuredStory | null>(null);
+  const [parsedPreview, setParsedPreview] = useState<StructuredStoryModel | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
