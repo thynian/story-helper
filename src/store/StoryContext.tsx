@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, ReactNode, useEffect, useRef } from 'react';
 import {
   UserStoryInput,
   StructuredStoryModel,
@@ -27,6 +27,7 @@ import {
   runPipelineStage,
   PipelineStageResultData,
 } from '@/services/llmProxyApi';
+import { saveStory } from '@/services/storyPersistence';
 
 // ============================================
 // State Interface
@@ -385,8 +386,44 @@ interface StoryProviderProps {
 
 export function StoryProvider({ children }: StoryProviderProps) {
   const [state, dispatch] = useReducer(storyReducer, initialState);
+  const storyIdRef = useRef<string | null>(null);
+  const lastSavedRef = useRef<string>('');
 
-  // Basic setters
+  // Auto-save effect
+  useEffect(() => {
+    const performSave = async () => {
+      if (!state.originalStoryText || state.originalStoryText.trim() === '') {
+        return;
+      }
+
+      const stateHash = JSON.stringify({
+        originalStoryText: state.originalStoryText,
+        optimisedStoryText: state.optimisedStoryText,
+        structuredStory: state.structuredStory,
+        analysisIssues: state.analysisIssues,
+        rewriteCandidates: state.rewriteCandidates,
+        acceptanceCriteria: state.acceptanceCriteria,
+        userDecisions: state.userDecisions,
+      });
+
+      if (stateHash === lastSavedRef.current) {
+        return;
+      }
+
+      console.log('[AutoSave] Saving story...');
+      const savedId = await saveStory(state, storyIdRef.current || undefined);
+      
+      if (savedId) {
+        storyIdRef.current = savedId;
+        lastSavedRef.current = stateHash;
+        console.log('[AutoSave] Story saved with ID:', savedId);
+      }
+    };
+
+    const timeoutId = setTimeout(performSave, 5000);
+    return () => clearTimeout(timeoutId);
+  }, [state]);
+
   const setOriginalStory = useCallback((text: string) => {
     dispatch({ type: 'SET_ORIGINAL_STORY', payload: text });
   }, []);

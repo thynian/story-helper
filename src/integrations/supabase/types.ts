@@ -145,6 +145,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      save_story: {
+        Args: {
+          p_acceptance_criteria?: Json
+          p_analysis_issues?: Json
+          p_optimised_text?: string
+          p_original_text: string
+          p_project_id?: string
+          p_quality_report?: Json
+          p_rewrite_candidates?: Json
+          p_story_id?: string
+          p_structured_story?: Json
+          p_user_decisions?: Json
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "user"
