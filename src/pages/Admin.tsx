@@ -6,16 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, FileText, History, Trash2, Eye, Loader2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { LogOut, FileText, History, Trash2, Eye, Loader2, AlertTriangle, CheckCircle, Clock, FolderOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import type { StructuredStoryModel, QualityIssue, AcceptanceCriterionItem } from '@/types/storyTypes';
-import type { AcceptanceCriterion } from '@/types/storyState';
+import type { StructuredStoryModel } from '@/types/storyTypes';
 import type { Json } from '@/integrations/supabase/types';
+import { ProjectManagement } from '@/components/admin/ProjectManagement';
 
 export default function Admin() {
   const { user, isAdmin, isLoading: authLoading, signOut } = useAuth();
@@ -104,7 +105,7 @@ export default function Admin() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <FileText className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-semibold">Story Admin Panel</h1>
+            <h1 className="text-xl font-semibold">Admin Panel</h1>
           </div>
           <Button variant="outline" onClick={handleSignOut}>
             <LogOut className="h-4 w-4 mr-2" />
@@ -114,7 +115,20 @@ export default function Admin() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Card>
+        <Tabs defaultValue="stories" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="stories" className="gap-2">
+              <FileText className="h-4 w-4" />
+              Stories
+            </TabsTrigger>
+            <TabsTrigger value="projects" className="gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Projekte
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="stories">
+            <Card>
           <CardHeader>
             <CardTitle>Alle User Stories</CardTitle>
             <CardDescription>
@@ -206,6 +220,12 @@ export default function Admin() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="projects">
+            <ProjectManagement />
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Details Dialog */}
