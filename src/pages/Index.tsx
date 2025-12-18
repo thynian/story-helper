@@ -1,5 +1,7 @@
 import { StoryWizard } from "@/components/StoryWizard";
-import { FileText } from "lucide-react";
+import { FileText, Shield } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   return (
@@ -7,18 +9,26 @@ const Index = () => {
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
-              <FileText className="h-5 w-5 text-primary-foreground" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-foreground">
+                  User Story Quality Assistant
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  Analysieren · Verbessern · Akzeptanzkriterien generieren
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-semibold text-foreground">
-                User Story Quality Assistant
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Analysieren · Verbessern · Akzeptanzkriterien generieren
-              </p>
-            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/auth">
+                <Shield className="h-4 w-4 mr-2" />
+                Admin
+              </Link>
+            </Button>
           </div>
         </div>
       </header>
