@@ -1,21 +1,21 @@
 import { useState } from "react";
+import { useStory } from "@/store/StoryContext";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight, Lightbulb } from "lucide-react";
 
-interface StoryInputStepProps {
-  initialStory: string;
-  onSubmit: (story: string) => void;
-}
-
 const EXAMPLE_STORY = `Als Benutzer möchte ich mich einloggen können, damit ich auf mein Konto zugreifen kann.`;
 
-export function StoryInputStep({ initialStory, onSubmit }: StoryInputStepProps) {
-  const [story, setStory] = useState(initialStory);
+export function StoryInputStep() {
+  const { state, actions } = useStory();
+  const [story, setStory] = useState(state.originalStoryText);
 
   const handleSubmit = () => {
     if (story.trim()) {
-      onSubmit(story.trim());
+      actions.setOriginalStory(story.trim());
+      actions.addVersionHistory('initial', 'Original Story eingegeben');
+      actions.markStepCompleted('input');
+      actions.goToStep('analysis');
     }
   };
 

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { WIZARD_STEPS, WizardStep } from "@/types/story";
+import { WIZARD_STEPS, WizardStep } from "@/types/storyState";
 import { Check } from "lucide-react";
 
 interface WizardProgressProps {
