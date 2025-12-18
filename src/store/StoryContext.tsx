@@ -15,6 +15,11 @@ import {
   generateId,
   createTimestamp,
 } from '@/types/storyState';
+import {
+  analyzeStoryApi,
+  rewriteStoryApi,
+  generateAcceptanceCriteriaApi,
+} from '@/services/llmProxyApi';
 
 // ============================================
 // Initial State
@@ -265,6 +270,10 @@ interface StoryContextValue {
     setError: (error: string | null) => void;
     reset: () => void;
     generateExportMarkdown: () => string;
+    // LLM Proxy Actions
+    analyzeStoryAction: () => Promise<void>;
+    rewriteStoryAction: () => Promise<void>;
+    generateAcceptanceCriteriaAction: () => Promise<void>;
   };
 }
 
@@ -503,6 +512,76 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     return markdown;
   }, [state]);
 
+  // ============================================
+  // LLM Proxy Actions
+  // ============================================
+  const analyzeStoryAction = useCallback(async () => {
+    const storyText = state.optimisedStoryText || state.originalStoryText;
+    if (!storyText) {
+      dispatch({ type: 'SET_ERROR', payload: 'Keine Story zum Analysieren vorhanden' });
+      return;
+    }
+
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      const result = await analyzeStoryApi(storyText, state.structuredStory, state.contextSnippets);
+      dispatch({ type: 'SET_ANALYSIS_ISSUES', payload: result.issues });
+      dispatch({ type: 'SET_ANALYSIS_SCORE', payload: result.score });
+      dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Fehler bei der Analyse';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets]);
+
+  const rewriteStoryAction = useCallback(async () => {
+    const storyText = state.optimisedStoryText || state.originalStoryText;
+    if (!storyText) {
+      dispatch({ type: 'SET_ERROR', payload: 'Keine Story zum Umschreiben vorhanden' });
+      return;
+    }
+
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      const result = await rewriteStoryApi(storyText, state.structuredStory, state.contextSnippets);
+      dispatch({ type: 'SET_REWRITE_CANDIDATES', payload: result.candidates });
+      dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Fehler beim Rewrite';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets]);
+
+  const generateAcceptanceCriteriaAction = useCallback(async () => {
+    const storyText = state.optimisedStoryText || state.originalStoryText;
+    if (!storyText) {
+      dispatch({ type: 'SET_ERROR', payload: 'Keine Story für Akzeptanzkriterien vorhanden' });
+      return;
+    }
+
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      const result = await generateAcceptanceCriteriaApi(storyText, state.structuredStory, state.contextSnippets);
+      dispatch({ type: 'SET_ACCEPTANCE_CRITERIA', payload: result.criteria });
+      dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Fehler bei Akzeptanzkriterien';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, [state.originalStoryText, state.optimisedStoryText, state.structuredStory, state.contextSnippets]);
+
   const actions = {
     setOriginalStory,
     setOptimisedStory,
@@ -526,6 +605,10 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     setError,
     reset,
     generateExportMarkdown,
+    // LLM Proxy Actions
+    analyzeStoryAction,
+    rewriteStoryAction,
+    generateAcceptanceCriteriaAction,
   };
 
   return (
