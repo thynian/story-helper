@@ -1,82 +1,14 @@
-import { useEffect } from "react";
+import { useState } from "react";
 import { useStory } from "@/store/StoryContext";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/wizard/LoadingState";
 import { ErrorState } from "@/components/wizard/ErrorState";
-import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Info } from "lucide-react";
-import { AnalysisIssue, IssueCategory, generateId } from "@/types/storyState";
+import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Info, Play, RefreshCw } from "lucide-react";
+import { IssueCategory } from "@/types/storyState";
 import { cn } from "@/lib/utils";
-
-// Mock analysis function - in production, this would call an API
-function analyzeStory(story: string): Promise<{ issues: AnalysisIssue[]; score: number }> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (Math.random() < 0.1) {
-        reject(new Error("Verbindung zum Server fehlgeschlagen"));
-        return;
-      }
-
-      const issues: AnalysisIssue[] = [];
-      let score = 100;
-
-      // Check for role
-      if (!story.toLowerCase().includes("als ")) {
-        issues.push({
-          id: generateId(),
-          category: "missing_role",
-          textReference: story,
-          reasoning: "Die Story enthält keine explizite Rollenangabe.",
-          clarificationQuestion: "Wer ist der primäre Nutzer dieser Funktion?",
-          severity: "error",
-        });
-        score -= 30;
-      }
-
-      // Check for action
-      if (!story.toLowerCase().includes("möchte ich")) {
-        issues.push({
-          id: generateId(),
-          category: "missing_goal",
-          textReference: story,
-          reasoning: "Die Story enthält kein klares Ziel oder keine Aktion.",
-          clarificationQuestion: "Was genau soll der Nutzer tun können?",
-          severity: "error",
-        });
-        score -= 30;
-      }
-
-      // Check for benefit
-      if (!story.toLowerCase().includes("damit")) {
-        issues.push({
-          id: generateId(),
-          category: "missing_benefit",
-          textReference: story,
-          reasoning: "Der Nutzen oder Mehrwert ist nicht explizit angegeben.",
-          clarificationQuestion: "Welchen Mehrwert hat diese Funktion für den Nutzer?",
-          severity: "warning",
-        });
-        score -= 20;
-      }
-
-      // Check length
-      if (story.length < 30) {
-        issues.push({
-          id: generateId(),
-          category: "too_short",
-          textReference: story,
-          reasoning: "Die Story ist sehr kurz und könnte mehr Details enthalten.",
-          severity: "info",
-        });
-        score -= 10;
-      }
-
-      resolve({
-        issues,
-        score: Math.max(0, score),
-      });
-    }, 1500);
-  });
-}
 
 const categoryLabels: Record<IssueCategory, string> = {
   missing_role: "Fehlende Rolle",
@@ -91,47 +23,44 @@ const categoryLabels: Record<IssueCategory, string> = {
   other: "Sonstiges",
 };
 
+const severityColors = {
+  error: "border-destructive/30 bg-destructive/5",
+  warning: "border-warning/30 bg-warning/5",
+  info: "border-primary/30 bg-primary/5",
+};
+
 export function AnalysisStep() {
   const { state, actions } = useStory();
-  const { originalStoryText, analysisIssues, analysisScore, isLoading, error } = state;
+  const { 
+    originalStoryText, 
+    optimisedStoryText,
+    analysisIssues, 
+    analysisScore, 
+    additionalContext,
+    isLoading, 
+    error 
+  } = state;
 
-  const runAnalysis = async () => {
-    actions.setLoading(true);
-    actions.setError(null);
-    try {
-      const result = await analyzeStory(originalStoryText);
-      actions.setAnalysisResults(result.issues, result.score);
-      actions.markStepCompleted('analysis');
-    } catch (err) {
-      actions.setError(err instanceof Error ? err.message : "Unbekannter Fehler");
-    } finally {
-      actions.setLoading(false);
-    }
+  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
+
+  const storyText = optimisedStoryText || originalStoryText;
+  const hasAnalysisRun = analysisScore !== null;
+  const relevantIssuesCount = analysisIssues.filter(i => i.isRelevant).length;
+
+  const handleStartAnalysis = async () => {
+    await actions.analyzeStoryAction();
+    actions.markStepCompleted('analysis');
   };
 
-  useEffect(() => {
-    if (analysisScore === null) {
-      runAnalysis();
-    }
-  }, []);
-
-  if (isLoading) {
-    return <LoadingState message="Story wird analysiert..." />;
-  }
-
-  if (error) {
-    return <ErrorState message={error} onRetry={runAnalysis} />;
-  }
-
-  if (analysisScore === null) return null;
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-success";
-    if (score >= 50) return "text-warning";
-    return "text-destructive";
+  const handleToggleRelevant = (issueId: string, isRelevant: boolean) => {
+    actions.updateAnalysisIssue(issueId, { isRelevant });
   };
 
-  const getIssueIcon = (severity: AnalysisIssue["severity"]) => {
+  const handleUpdateNote = (issueId: string, userNote: string) => {
+    actions.updateAnalysisIssue(issueId, { userNote });
+  };
+
+  const getIssueIcon = (severity: 'error' | 'warning' | 'info') => {
     switch (severity) {
       case "error":
         return <AlertTriangle className="h-4 w-4 text-destructive" />;
@@ -142,82 +71,196 @@ export function AnalysisStep() {
     }
   };
 
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-success";
+    if (score >= 50) return "text-warning";
+    return "text-destructive";
+  };
+
+  if (isLoading) {
+    return <LoadingState message="Story wird analysiert..." />;
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={handleStartAnalysis} />;
+  }
+
   return (
     <div className="space-y-6 animate-slide-up">
       <div>
-        <h2 className="text-xl font-semibold text-foreground mb-2">Analyse-Ergebnis</h2>
+        <h2 className="text-xl font-semibold text-foreground mb-2">Story-Analyse</h2>
         <p className="text-sm text-muted-foreground">
-          Überprüfen Sie die Qualität Ihrer User Story.
+          Analysieren Sie Ihre User Story auf Qualitätsprobleme und Verbesserungspotenzial.
         </p>
       </div>
 
-      {/* Original Story */}
+      {/* Original Story Display */}
       <div className="rounded-lg border border-border bg-muted/30 p-4">
         <p className="text-xs font-medium text-muted-foreground mb-2">Ihre Story:</p>
-        <p className="text-sm text-foreground">{originalStoryText}</p>
+        <p className="text-sm text-foreground">{storyText}</p>
       </div>
 
-      {/* Score */}
-      <div className="rounded-lg border border-border bg-card p-6 text-center shadow-card">
-        <p className="text-sm text-muted-foreground mb-2">Qualitätsscore</p>
-        <p className={cn("text-5xl font-bold", getScoreColor(analysisScore))}>
-          {analysisScore}
-          <span className="text-2xl text-muted-foreground">/100</span>
+      {/* Additional Context Field */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-foreground">
+          Ergänzungen / Antworten
+        </label>
+        <Textarea
+          placeholder="Fügen Sie hier zusätzliche Informationen, Antworten auf Klärungsfragen oder Kontext hinzu, der in die nächste Analyse einfließen soll..."
+          value={additionalContext}
+          onChange={(e) => actions.setAdditionalContext(e.target.value)}
+          className="min-h-[80px]"
+        />
+        <p className="text-xs text-muted-foreground">
+          Diese Informationen werden bei der nächsten Analyse berücksichtigt.
         </p>
       </div>
 
-      {/* Issues */}
-      {analysisIssues.length > 0 ? (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-foreground">
-            Gefundene Probleme ({analysisIssues.length})
-          </h3>
-          {analysisIssues.map((issue) => (
-            <div
-              key={issue.id}
-              className={cn(
-                "rounded-lg border p-4",
-                issue.severity === "error" && "border-destructive/30 bg-destructive/5",
-                issue.severity === "warning" && "border-warning/30 bg-warning/5",
-                issue.severity === "info" && "border-primary/30 bg-primary/5"
-              )}
-            >
-              <div className="flex items-start gap-3">
-                {getIssueIcon(issue.severity)}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium bg-muted px-2 py-0.5 rounded">
-                      {categoryLabels[issue.category]}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-foreground">{issue.reasoning}</p>
-                  {issue.clarificationQuestion && (
-                    <p className="text-xs text-muted-foreground mt-2 italic">
-                      Klärungsfrage: {issue.clarificationQuestion}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-success/30 bg-success/5 p-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="h-5 w-5 text-success" />
-            <p className="text-sm font-medium text-foreground">
-              Keine Probleme gefunden! Ihre Story entspricht den Best Practices.
-            </p>
-          </div>
+      {/* Analysis Actions */}
+      <div className="flex gap-3">
+        {!hasAnalysisRun ? (
+          <Button onClick={handleStartAnalysis} className="flex-1">
+            <Play className="h-4 w-4 mr-2" />
+            Analyse starten
+          </Button>
+        ) : (
+          <Button onClick={handleStartAnalysis} variant="outline" className="flex-1">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Analyse wiederholen
+          </Button>
+        )}
+      </div>
+
+      {/* Score Display */}
+      {hasAnalysisRun && (
+        <div className="rounded-lg border border-border bg-card p-6 text-center shadow-card">
+          <p className="text-sm text-muted-foreground mb-2">Qualitätsscore</p>
+          <p className={cn("text-5xl font-bold", getScoreColor(analysisScore))}>
+            {analysisScore}
+            <span className="text-2xl text-muted-foreground">/100</span>
+          </p>
         </div>
       )}
 
+      {/* Issues List */}
+      {hasAnalysisRun && (
+        <>
+          {analysisIssues.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-foreground">
+                  Gefundene Probleme ({analysisIssues.length})
+                </h3>
+                {relevantIssuesCount > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {relevantIssuesCount} als relevant markiert
+                  </span>
+                )}
+              </div>
+
+              {analysisIssues.map((issue) => (
+                <div
+                  key={issue.id}
+                  className={cn(
+                    "rounded-lg border p-4 transition-all",
+                    severityColors[issue.severity],
+                    issue.isRelevant && "ring-2 ring-primary/50"
+                  )}
+                >
+                  <div className="space-y-3">
+                    {/* Issue Header */}
+                    <div className="flex items-start gap-3">
+                      {getIssueIcon(issue.severity)}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs font-medium bg-muted px-2 py-0.5 rounded">
+                            {categoryLabels[issue.category]}
+                          </span>
+                        </div>
+                        
+                        {/* Text Reference */}
+                        {issue.textReference && (
+                          <div className="mt-2 p-2 rounded bg-background/50 border border-border/50">
+                            <p className="text-xs text-muted-foreground mb-1">Betroffene Textstelle:</p>
+                            <p className="text-sm font-mono text-foreground">"{issue.textReference}"</p>
+                          </div>
+                        )}
+
+                        {/* Reasoning */}
+                        <p className="text-sm font-medium text-foreground mt-2">{issue.reasoning}</p>
+
+                        {/* Clarification Question */}
+                        {issue.clarificationQuestion && (
+                          <div className="mt-2 p-2 rounded bg-primary/5 border border-primary/20">
+                            <p className="text-xs font-medium text-primary mb-1">Klärungsfrage:</p>
+                            <p className="text-sm text-foreground italic">{issue.clarificationQuestion}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Human-in-the-loop Controls */}
+                    <div className="border-t border-border/50 pt-3 space-y-3">
+                      {/* Relevance Toggle */}
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`relevant-${issue.id}`}
+                          checked={issue.isRelevant || false}
+                          onCheckedChange={(checked) => handleToggleRelevant(issue.id, checked === true)}
+                        />
+                        <label 
+                          htmlFor={`relevant-${issue.id}`}
+                          className="text-sm text-foreground cursor-pointer"
+                        >
+                          Als relevant für Rewrite markieren
+                        </label>
+                      </div>
+
+                      {/* User Note */}
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => setExpandedIssueId(expandedIssueId === issue.id ? null : issue.id)}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {expandedIssueId === issue.id ? "Notiz ausblenden" : "Notiz hinzufügen"}
+                        </button>
+                        {(expandedIssueId === issue.id || issue.userNote) && (
+                          <Input
+                            placeholder="Ihre Notiz zu diesem Problem..."
+                            value={issue.userNote || ""}
+                            onChange={(e) => handleUpdateNote(issue.id, e.target.value)}
+                            className="text-sm"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-success/30 bg-success/5 p-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-5 w-5 text-success" />
+                <p className="text-sm font-medium text-foreground">
+                  Keine Probleme gefunden! Ihre Story entspricht den Best Practices.
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Navigation */}
       <div className="flex justify-between pt-4">
         <Button variant="outline" onClick={() => actions.goToStep('input')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Zurück
         </Button>
-        <Button onClick={() => actions.goToStep('rewrite')}>
+        <Button 
+          onClick={() => actions.goToStep('rewrite')}
+          disabled={!hasAnalysisRun}
+        >
           Weiter zu Rewrite
           <ArrowRight className="h-4 w-4 ml-2" />
         </Button>

@@ -48,6 +48,9 @@ export interface AnalysisIssue {
   reasoning: string;
   clarificationQuestion?: string;
   severity: 'error' | 'warning' | 'info';
+  // Human-in-the-loop fields
+  isRelevant?: boolean; // Marked as relevant for rewrite
+  userNote?: string; // User notes/feedback on the issue
 }
 
 // Rewrite Candidate
@@ -112,6 +115,7 @@ export interface StoryState {
   // Optional Context
   contextDocuments: ContextDocument[];
   contextSnippets: ContextSnippet[];
+  additionalContext: string; // User-provided additional context for analysis
 
   // Analysis Results
   analysisIssues: AnalysisIssue[];
@@ -167,6 +171,7 @@ export type StoryAction =
   | { type: 'REMOVE_CONTEXT_SNIPPET'; payload: string }
   | { type: 'SET_ANALYSIS_ISSUES'; payload: AnalysisIssue[] }
   | { type: 'SET_ANALYSIS_SCORE'; payload: number }
+  | { type: 'UPDATE_ANALYSIS_ISSUE'; payload: { id: string; updates: Partial<AnalysisIssue> } }
   | { type: 'SET_REWRITE_CANDIDATES'; payload: RewriteCandidate[] }
   | { type: 'SELECT_REWRITE'; payload: string | null }
   | { type: 'SET_ACCEPTANCE_CRITERIA'; payload: AcceptanceCriterion[] }
@@ -181,6 +186,7 @@ export type StoryAction =
   | { type: 'MARK_STEP_COMPLETED'; payload: WizardStep }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'SET_ADDITIONAL_CONTEXT'; payload: string }
   | { type: 'RESET_STATE' };
 
 // ============================================

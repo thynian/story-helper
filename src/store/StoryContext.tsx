@@ -33,6 +33,7 @@ const initialState: StoryState = {
   // Optional Context
   contextDocuments: [],
   contextSnippets: [],
+  additionalContext: '',
 
   // Analysis Results
   analysisIssues: [],
@@ -134,6 +135,20 @@ function storyReducer(state: StoryState, action: StoryAction): StoryState {
       return {
         ...state,
         analysisScore: action.payload,
+      };
+
+    case 'UPDATE_ANALYSIS_ISSUE':
+      return {
+        ...state,
+        analysisIssues: state.analysisIssues.map((issue) =>
+          issue.id === action.payload.id ? { ...issue, ...action.payload.updates } : issue
+        ),
+      };
+
+    case 'SET_ADDITIONAL_CONTEXT':
+      return {
+        ...state,
+        additionalContext: action.payload,
       };
 
     case 'SET_REWRITE_CANDIDATES':
@@ -256,6 +271,8 @@ interface StoryContextValue {
     addContextSnippet: (snippet: Omit<ContextSnippet, 'id' | 'addedAt'>) => void;
     removeContextSnippet: (id: string) => void;
     setAnalysisResults: (issues: AnalysisIssue[], score: number) => void;
+    updateAnalysisIssue: (id: string, updates: Partial<AnalysisIssue>) => void;
+    setAdditionalContext: (context: string) => void;
     setRewriteCandidates: (candidates: RewriteCandidate[]) => void;
     selectRewrite: (id: string | null) => void;
     acceptRewrite: (id: string, editedText?: string) => void;
@@ -331,6 +348,14 @@ export function StoryProvider({ children }: StoryProviderProps) {
     dispatch({ type: 'SET_ANALYSIS_ISSUES', payload: issues });
     dispatch({ type: 'SET_ANALYSIS_SCORE', payload: score });
     dispatch({ type: 'UPDATE_META', payload: { lastRunAt: createTimestamp() } });
+  }, []);
+
+  const updateAnalysisIssue = useCallback((id: string, updates: Partial<AnalysisIssue>) => {
+    dispatch({ type: 'UPDATE_ANALYSIS_ISSUE', payload: { id, updates } });
+  }, []);
+
+  const setAdditionalContext = useCallback((context: string) => {
+    dispatch({ type: 'SET_ADDITIONAL_CONTEXT', payload: context });
   }, []);
 
   const setRewriteCandidates = useCallback((candidates: RewriteCandidate[]) => {
@@ -591,6 +616,8 @@ ${criteriaText || '_Keine Akzeptanzkriterien definiert_'}
     addContextSnippet,
     removeContextSnippet,
     setAnalysisResults,
+    updateAnalysisIssue,
+    setAdditionalContext,
     setRewriteCandidates,
     selectRewrite,
     acceptRewrite,
