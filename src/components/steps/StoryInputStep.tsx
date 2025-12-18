@@ -333,6 +333,7 @@ export function StoryInputStep() {
       {/* Save & Structure Button */}
       <div className="pt-2">
         <Button 
+          type="button"
           onClick={handleSaveAndStructure} 
           disabled={!story.trim()}
           className="gap-2"
