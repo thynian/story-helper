@@ -6,27 +6,32 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/wizard/LoadingState";
 import { ErrorState } from "@/components/wizard/ErrorState";
-import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Info, Play, RefreshCw } from "lucide-react";
-import { IssueCategory } from "@/types/storyState";
+import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Info, Play, RefreshCw, AlertOctagon } from "lucide-react";
+import { IssueCategory, IssueSeverity } from "@/types/storyTypes";
 import { cn } from "@/lib/utils";
 
 const categoryLabels: Record<IssueCategory, string> = {
+  ambiguity: "Mehrdeutigkeit",
   missing_role: "Fehlende Rolle",
   missing_goal: "Fehlendes Ziel",
   missing_benefit: "Fehlender Nutzen",
   vague_language: "Unklare Sprache",
-  too_long: "Zu lang",
-  too_short: "Zu kurz",
+  too_broad_scope: "Zu breiter Umfang",
+  solution_bias: "Lösungsvorgabe",
+  persona_unclear: "Unklare Persona",
+  business_value_gap: "Fehlender Business Value",
+  not_testable: "Nicht testbar",
+  inconsistency: "Widerspruch",
   missing_context: "Fehlender Kontext",
   technical_debt: "Technische Schuld",
-  not_testable: "Nicht testbar",
   other: "Sonstiges",
 };
 
-const severityColors = {
-  error: "border-destructive/30 bg-destructive/5",
-  warning: "border-warning/30 bg-warning/5",
-  info: "border-primary/30 bg-primary/5",
+const severityColors: Record<IssueSeverity, string> = {
+  critical: "border-destructive/50 bg-destructive/10",
+  major: "border-warning/50 bg-warning/10",
+  minor: "border-primary/30 bg-primary/5",
+  info: "border-muted-foreground/30 bg-muted/30",
 };
 
 export function AnalysisStep() {
@@ -60,14 +65,16 @@ export function AnalysisStep() {
     actions.updateAnalysisIssue(issueId, { userNote });
   };
 
-  const getIssueIcon = (severity: 'error' | 'warning' | 'info') => {
+  const getIssueIcon = (severity: IssueSeverity) => {
     switch (severity) {
-      case "error":
-        return <AlertTriangle className="h-4 w-4 text-destructive" />;
-      case "warning":
+      case "critical":
+        return <AlertOctagon className="h-4 w-4 text-destructive" />;
+      case "major":
         return <AlertTriangle className="h-4 w-4 text-warning" />;
-      case "info":
+      case "minor":
         return <Info className="h-4 w-4 text-primary" />;
+      case "info":
+        return <Info className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
