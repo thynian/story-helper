@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 import { 
   ArrowRight, 
   Lightbulb, 
@@ -34,6 +35,7 @@ const EXAMPLE_STORY = `Als Benutzer möchte ich mich einloggen können, damit ic
 
 export function StoryInputStep() {
   const { state, dispatch, actions } = useStory();
+  const { toast } = useToast();
   const [story, setStory] = useState(state.originalStoryText);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -78,6 +80,22 @@ export function StoryInputStep() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+
+    // Validate file types - only allow .txt and .md
+    const allowedExtensions = ['.txt', '.md'];
+    const invalidFiles = files.filter(f => !allowedExtensions.some(ext => f.name.toLowerCase().endsWith(ext)));
+    
+    if (invalidFiles.length > 0) {
+      toast({ 
+        title: 'Ungültiges Dateiformat', 
+        description: 'Nur .txt und .md Dateien werden unterstützt.',
+        variant: 'destructive' 
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
 
     // If no project selected, use local state only
     if (!selectedProjectId) {
@@ -268,7 +286,7 @@ export function StoryInputStep() {
           multiple
           onChange={handleFileUpload}
           className="hidden"
-          accept=".txt,.md,.doc,.docx,.pdf"
+          accept=".txt,.md"
         />
         
         <Button
