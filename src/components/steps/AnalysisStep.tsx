@@ -1,24 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useStory } from "@/store/StoryContext";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/wizard/LoadingState";
 import { ErrorState } from "@/components/wizard/ErrorState";
 import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Info } from "lucide-react";
-import { StoryAnalysis, AnalysisIssue } from "@/types/story";
+import { AnalysisIssue, IssueCategory, generateId } from "@/types/storyState";
 import { cn } from "@/lib/utils";
 
-interface AnalysisStepProps {
-  story: string;
-  analysis: StoryAnalysis | null;
-  onAnalysisComplete: (analysis: StoryAnalysis) => void;
-  onNext: () => void;
-  onBack: () => void;
-}
-
 // Mock analysis function - in production, this would call an API
-function analyzeStory(story: string): Promise<StoryAnalysis> {
+function analyzeStory(story: string): Promise<{ issues: AnalysisIssue[]; score: number }> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      // Simulate occasional errors
       if (Math.random() < 0.1) {
         reject(new Error("Verbindung zum Server fehlgeschlagen"));
         return;
@@ -30,10 +22,12 @@ function analyzeStory(story: string): Promise<StoryAnalysis> {
       // Check for role
       if (!story.toLowerCase().includes("als ")) {
         issues.push({
-          id: "1",
-          type: "error",
-          message: "Keine Rolle gefunden",
-          suggestion: "Beginnen Sie mit 'Als [Rolle]...'",
+          id: generateId(),
+          category: "missing_role",
+          textReference: story,
+          reasoning: "Die Story enthält keine explizite Rollenangabe.",
+          clarificationQuestion: "Wer ist der primäre Nutzer dieser Funktion?",
+          severity: "error",
         });
         score -= 30;
       }
@@ -41,10 +35,12 @@ function analyzeStory(story: string): Promise<StoryAnalysis> {
       // Check for action
       if (!story.toLowerCase().includes("möchte ich")) {
         issues.push({
-          id: "2",
-          type: "error",
-          message: "Keine Aktion gefunden",
-          suggestion: "Fügen Sie 'möchte ich [Aktion]' hinzu",
+          id: generateId(),
+          category: "missing_goal",
+          textReference: story,
+          reasoning: "Die Story enthält kein klares Ziel oder keine Aktion.",
+          clarificationQuestion: "Was genau soll der Nutzer tun können?",
+          severity: "error",
         });
         score -= 30;
       }
@@ -52,10 +48,12 @@ function analyzeStory(story: string): Promise<StoryAnalysis> {
       // Check for benefit
       if (!story.toLowerCase().includes("damit")) {
         issues.push({
-          id: "3",
-          type: "warning",
-          message: "Kein Nutzen angegeben",
-          suggestion: "Ergänzen Sie 'damit [Nutzen]'",
+          id: generateId(),
+          category: "missing_benefit",
+          textReference: story,
+          reasoning: "Der Nutzen oder Mehrwert ist nicht explizit angegeben.",
+          clarificationQuestion: "Welchen Mehrwert hat diese Funktion für den Nutzer?",
+          severity: "warning",
         });
         score -= 20;
       }
@@ -63,56 +61,61 @@ function analyzeStory(story: string): Promise<StoryAnalysis> {
       // Check length
       if (story.length < 30) {
         issues.push({
-          id: "4",
-          type: "info",
-          message: "Story ist sehr kurz",
-          suggestion: "Erwägen Sie, mehr Details hinzuzufügen",
+          id: generateId(),
+          category: "too_short",
+          textReference: story,
+          reasoning: "Die Story ist sehr kurz und könnte mehr Details enthalten.",
+          severity: "info",
         });
         score -= 10;
       }
 
       resolve({
-        score: Math.max(0, score),
         issues,
-        suggestions: [
-          "Spezifischere Rollenbeschreibung verwenden",
-          "Messbare Erfolgskriterien hinzufügen",
-        ],
+        score: Math.max(0, score),
       });
     }, 1500);
   });
 }
 
-export function AnalysisStep({
-  story,
-  analysis,
-  onAnalysisComplete,
-  onNext,
-  onBack,
-}: AnalysisStepProps) {
-  const [loading, setLoading] = useState(!analysis);
-  const [error, setError] = useState<string | null>(null);
+const categoryLabels: Record<IssueCategory, string> = {
+  missing_role: "Fehlende Rolle",
+  missing_goal: "Fehlendes Ziel",
+  missing_benefit: "Fehlender Nutzen",
+  vague_language: "Unklare Sprache",
+  too_long: "Zu lang",
+  too_short: "Zu kurz",
+  missing_context: "Fehlender Kontext",
+  technical_debt: "Technische Schuld",
+  not_testable: "Nicht testbar",
+  other: "Sonstiges",
+};
+
+export function AnalysisStep() {
+  const { state, actions } = useStory();
+  const { originalStoryText, analysisIssues, analysisScore, isLoading, error } = state;
 
   const runAnalysis = async () => {
-    setLoading(true);
-    setError(null);
+    actions.setLoading(true);
+    actions.setError(null);
     try {
-      const result = await analyzeStory(story);
-      onAnalysisComplete(result);
+      const result = await analyzeStory(originalStoryText);
+      actions.setAnalysisResults(result.issues, result.score);
+      actions.markStepCompleted('analysis');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler");
+      actions.setError(err instanceof Error ? err.message : "Unbekannter Fehler");
     } finally {
-      setLoading(false);
+      actions.setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!analysis) {
+    if (analysisScore === null) {
       runAnalysis();
     }
   }, []);
 
-  if (loading) {
+  if (isLoading) {
     return <LoadingState message="Story wird analysiert..." />;
   }
 
@@ -120,7 +123,7 @@ export function AnalysisStep({
     return <ErrorState message={error} onRetry={runAnalysis} />;
   }
 
-  if (!analysis) return null;
+  if (analysisScore === null) return null;
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return "text-success";
@@ -128,8 +131,8 @@ export function AnalysisStep({
     return "text-destructive";
   };
 
-  const getIssueIcon = (type: AnalysisIssue["type"]) => {
-    switch (type) {
+  const getIssueIcon = (severity: AnalysisIssue["severity"]) => {
+    switch (severity) {
       case "error":
         return <AlertTriangle className="h-4 w-4 text-destructive" />;
       case "warning":
@@ -151,38 +154,47 @@ export function AnalysisStep({
       {/* Original Story */}
       <div className="rounded-lg border border-border bg-muted/30 p-4">
         <p className="text-xs font-medium text-muted-foreground mb-2">Ihre Story:</p>
-        <p className="text-sm text-foreground">{story}</p>
+        <p className="text-sm text-foreground">{originalStoryText}</p>
       </div>
 
       {/* Score */}
       <div className="rounded-lg border border-border bg-card p-6 text-center shadow-card">
         <p className="text-sm text-muted-foreground mb-2">Qualitätsscore</p>
-        <p className={cn("text-5xl font-bold", getScoreColor(analysis.score))}>
-          {analysis.score}
+        <p className={cn("text-5xl font-bold", getScoreColor(analysisScore))}>
+          {analysisScore}
           <span className="text-2xl text-muted-foreground">/100</span>
         </p>
       </div>
 
       {/* Issues */}
-      {analysis.issues.length > 0 ? (
+      {analysisIssues.length > 0 ? (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-foreground">Gefundene Probleme</h3>
-          {analysis.issues.map((issue) => (
+          <h3 className="text-sm font-medium text-foreground">
+            Gefundene Probleme ({analysisIssues.length})
+          </h3>
+          {analysisIssues.map((issue) => (
             <div
               key={issue.id}
               className={cn(
                 "rounded-lg border p-4",
-                issue.type === "error" && "border-destructive/30 bg-destructive/5",
-                issue.type === "warning" && "border-warning/30 bg-warning/5",
-                issue.type === "info" && "border-primary/30 bg-primary/5"
+                issue.severity === "error" && "border-destructive/30 bg-destructive/5",
+                issue.severity === "warning" && "border-warning/30 bg-warning/5",
+                issue.severity === "info" && "border-primary/30 bg-primary/5"
               )}
             >
               <div className="flex items-start gap-3">
-                {getIssueIcon(issue.type)}
-                <div>
-                  <p className="text-sm font-medium text-foreground">{issue.message}</p>
-                  {issue.suggestion && (
-                    <p className="text-xs text-muted-foreground mt-1">{issue.suggestion}</p>
+                {getIssueIcon(issue.severity)}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium bg-muted px-2 py-0.5 rounded">
+                      {categoryLabels[issue.category]}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-foreground">{issue.reasoning}</p>
+                  {issue.clarificationQuestion && (
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      Klärungsfrage: {issue.clarificationQuestion}
+                    </p>
                   )}
                 </div>
               </div>
@@ -201,11 +213,11 @@ export function AnalysisStep({
       )}
 
       <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" onClick={() => actions.goToStep('input')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Zurück
         </Button>
-        <Button onClick={onNext}>
+        <Button onClick={() => actions.goToStep('rewrite')}>
           Weiter zu Rewrite
           <ArrowRight className="h-4 w-4 ml-2" />
         </Button>
