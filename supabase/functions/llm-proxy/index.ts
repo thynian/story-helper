@@ -100,19 +100,20 @@ function validateResponse(operation: Operation, data: unknown): data is LLMRespo
 }
 
 async function callLLM(prompt: string, systemPrompt: string, apiKey: string): Promise<unknown> {
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt }
       ],
       temperature: 0.7,
+      max_tokens: 2000,
     }),
   });
 
@@ -151,9 +152,9 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    const apiKey = Deno.env.get('LLM_API_KEY');
     if (!apiKey) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+      throw new Error('LLM_API_KEY is not configured');
     }
 
     const body: LLMRequest = await req.json();
