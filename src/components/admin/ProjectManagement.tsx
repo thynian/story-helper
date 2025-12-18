@@ -109,6 +109,22 @@ export function ProjectManagement() {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
+    // Validate file types - only allow .txt and .md
+    const allowedExtensions = ['.txt', '.md'];
+    const invalidFiles = files.filter(f => !allowedExtensions.some(ext => f.name.toLowerCase().endsWith(ext)));
+    
+    if (invalidFiles.length > 0) {
+      toast({ 
+        title: 'Ungültiges Dateiformat', 
+        description: 'Nur .txt und .md Dateien werden unterstützt.',
+        variant: 'destructive' 
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setIsUploading(true);
     for (const file of files) {
       await uploadDocument(selectedProject.id, file);
@@ -223,7 +239,7 @@ export function ProjectManagement() {
                   multiple
                   onChange={handleFileUpload}
                   className="hidden"
-                  accept=".txt,.md,.doc,.docx,.pdf"
+                  accept=".txt,.md"
                 />
                 <Button 
                   size="sm" 
@@ -270,7 +286,7 @@ export function ProjectManagement() {
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
               <p>Keine Dokumente in diesem Projekt</p>
               <p className="text-xs mt-1">
-                Laden Sie Dokumente hoch, um sie zu indexieren
+                Laden Sie .txt oder .md Dateien hoch
               </p>
             </div>
           ) : (
