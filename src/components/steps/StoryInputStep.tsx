@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useStory } from "@/store/StoryContext";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { 
   ArrowRight, 
   Lightbulb, 
@@ -14,46 +15,102 @@ import {
   Target, 
   Sparkles,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  FolderOpen
 } from "lucide-react";
 import { parseUserStory, calculateCompletenessScore } from "@/lib/storyParser";
-import { StructuredStoryModel, generateId, createTimestamp } from "@/types/storyTypes";
+import { StructuredStoryModel } from "@/types/storyTypes";
 import { cn } from "@/lib/utils";
+import { 
+  fetchProjects, 
+  fetchProjectDocuments, 
+  uploadDocument,
+  Project, 
+  ProjectDocument 
+} from "@/services/projectService";
 
 const EXAMPLE_STORY = `Als Benutzer möchte ich mich einloggen können, damit ich auf mein Konto zugreifen kann.`;
 
 export function StoryInputStep() {
   const { state, dispatch, actions } = useStory();
   const [story, setStory] = useState(state.originalStoryText);
-  const [projectId, setProjectId] = useState(state.meta.projectId);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<ProjectDocument[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [parsedPreview, setParsedPreview] = useState<StructuredStoryModel | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Load projects on mount
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  // Load documents when project changes
+  useEffect(() => {
+    if (selectedProjectId) {
+      loadProjectDocuments(selectedProjectId);
+      dispatch({ type: 'UPDATE_META', payload: { projectId: selectedProjectId } });
+    } else {
+      setProjectDocuments([]);
+    }
+  }, [selectedProjectId, dispatch]);
+
+  const loadProjects = async () => {
+    setIsLoadingProjects(true);
+    const data = await fetchProjects();
+    setProjects(data);
+    setIsLoadingProjects(false);
+  };
+
+  const loadProjectDocuments = async (projectId: string) => {
+    setIsLoadingDocs(true);
+    const docs = await fetchProjectDocuments(projectId);
+    setProjectDocuments(docs);
+    setIsLoadingDocs(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setUploadedFiles(prev => [...prev, ...files]);
+    if (files.length === 0) return;
+
+    // If no project selected, use local state only
+    if (!selectedProjectId) {
+      setUploadedFiles(prev => [...prev, ...files]);
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          actions.addContextDocument({
+            name: file.name,
+            content: reader.result as string,
+            type: 'file',
+          });
+        };
+        reader.readAsText(file);
+      });
+      return;
+    }
+
+    // Upload to project storage
+    setIsUploading(true);
+    for (const file of files) {
+      await uploadDocument(selectedProjectId, file);
+    }
+    setIsUploading(false);
     
-    // Add to context documents in state
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        actions.addContextDocument({
-          name: file.name,
-          content: reader.result as string,
-          type: 'file',
-        });
-      };
-      reader.readAsText(file);
-    });
+    // Reload project documents
+    loadProjectDocuments(selectedProjectId);
   };
 
   const removeFile = (index: number) => {
     const fileToRemove = uploadedFiles[index];
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
     
-    // Find and remove from state
     const docToRemove = state.contextDocuments.find(d => d.name === fileToRemove.name);
     if (docToRemove) {
       actions.removeContextDocument(docToRemove.id);
@@ -63,28 +120,16 @@ export function StoryInputStep() {
   const handleSaveAndStructure = () => {
     if (!story.trim()) return;
 
-    // Update project ID if changed
-    if (projectId !== state.meta.projectId) {
-      dispatch({ type: 'UPDATE_META', payload: { projectId } });
-    }
-
-    // Set original story
     actions.setOriginalStory(story.trim());
-    
-    // Set optimisedStoryText initially equal to originalStoryText
     actions.setOptimisedStory(story.trim());
 
-    // Parse and structure the story
     const structured = parseUserStory(story.trim());
     if (structured) {
       actions.setStructuredStory(structured);
       setParsedPreview(structured);
     }
 
-    // Add version history
     actions.addVersionHistory('initial', 'Original Story eingegeben und strukturiert');
-    
-    // Show preview
     setShowPreview(true);
   };
 
@@ -99,6 +144,19 @@ export function StoryInputStep() {
     setParsedPreview(null);
   };
 
+  const getStatusBadge = (status: ProjectDocument['status']) => {
+    switch (status) {
+      case 'indexed':
+        return <Badge variant="default" className="bg-success text-success-foreground">Indexiert</Badge>;
+      case 'processing':
+        return <Badge variant="secondary"><Loader2 className="h-3 w-3 animate-spin mr-1" />Verarbeitung</Badge>;
+      case 'error':
+        return <Badge variant="destructive">Fehler</Badge>;
+      default:
+        return <Badge variant="outline">Ausstehend</Badge>;
+    }
+  };
+
   const completenessScore = parsedPreview ? calculateCompletenessScore(parsedPreview) : 0;
 
   return (
@@ -109,6 +167,63 @@ export function StoryInputStep() {
           Geben Sie Ihre User Story ein und strukturieren Sie sie automatisch.
         </p>
       </div>
+
+      {/* Project Selection */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">
+          Projekt auswählen <span className="text-muted-foreground text-xs">(optional)</span>
+        </Label>
+        <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+          <SelectTrigger className="max-w-md">
+            <SelectValue placeholder={isLoadingProjects ? "Lade Projekte..." : "Projekt auswählen"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Kein Projekt</SelectItem>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                {project.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedProjectId && (
+          <p className="text-xs text-muted-foreground">
+            Dokumente aus diesem Projekt werden automatisch als Kontext verwendet.
+          </p>
+        )}
+      </div>
+
+      {/* Project Documents (if project selected) */}
+      {selectedProjectId && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Projekt-Dokumente
+            </Label>
+            {isLoadingDocs && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+          
+          {projectDocuments.length > 0 ? (
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {projectDocuments.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg text-sm"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="flex-1 truncate">{doc.name}</span>
+                  {getStatusBadge(doc.status)}
+                </div>
+              ))}
+            </div>
+          ) : !isLoadingDocs ? (
+            <p className="text-sm text-muted-foreground italic">
+              Keine Dokumente in diesem Projekt
+            </p>
+          ) : null}
+        </div>
+      )}
 
       {/* Story Text Input */}
       <div className="space-y-2">
@@ -135,27 +250,16 @@ export function StoryInputStep() {
         </button>
       </div>
 
-      {/* Project ID (optional) */}
-      <div className="space-y-2">
-        <Label htmlFor="project-id" className="text-sm font-medium">
-          Projekt-ID <span className="text-muted-foreground text-xs">(optional)</span>
-        </Label>
-        <Input
-          id="project-id"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          placeholder="z.B. PRJ-001 oder Projektname"
-          className="max-w-sm"
-        />
-      </div>
-
-      {/* Context Documents Upload (optional) */}
+      {/* Context Documents Upload */}
       <div className="space-y-2">
         <Label className="text-sm font-medium">
-          Kontext-Dokumente <span className="text-muted-foreground text-xs">(optional)</span>
+          {selectedProjectId ? 'Neue Dokumente hochladen' : 'Kontext-Dokumente'}{' '}
+          <span className="text-muted-foreground text-xs">(optional)</span>
         </Label>
         <p className="text-xs text-muted-foreground">
-          Laden Sie zusätzliche Dokumente hoch, die Kontext zur Story liefern.
+          {selectedProjectId 
+            ? 'Dokumente werden dem Projekt hinzugefügt und automatisch indexiert.'
+            : 'Laden Sie zusätzliche Dokumente hoch, die Kontext zur Story liefern.'}
         </p>
         
         <input
@@ -172,14 +276,19 @@ export function StoryInputStep() {
           variant="outline"
           size="sm"
           onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
           className="gap-2"
         >
-          <Upload className="h-4 w-4" />
-          Dokumente hochladen
+          {isUploading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          {isUploading ? 'Wird hochgeladen...' : 'Dokumente hochladen'}
         </Button>
 
-        {/* Uploaded Files List */}
-        {uploadedFiles.length > 0 && (
+        {/* Local Uploaded Files List (when no project) */}
+        {!selectedProjectId && uploadedFiles.length > 0 && (
           <div className="mt-3 space-y-2">
             {uploadedFiles.map((file, index) => (
               <div
@@ -236,7 +345,6 @@ export function StoryInputStep() {
           </div>
 
           <div className="space-y-3">
-            {/* Role */}
             <div className="flex items-start gap-3">
               <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <User className="h-4 w-4 text-primary" />
@@ -254,7 +362,6 @@ export function StoryInputStep() {
               </div>
             </div>
 
-            {/* Goal */}
             <div className="flex items-start gap-3">
               <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Target className="h-4 w-4 text-primary" />
@@ -272,7 +379,6 @@ export function StoryInputStep() {
               </div>
             </div>
 
-            {/* Benefit */}
             <div className="flex items-start gap-3">
               <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Sparkles className="h-4 w-4 text-primary" />
@@ -290,7 +396,6 @@ export function StoryInputStep() {
               </div>
             </div>
 
-            {/* Constraints (if any) */}
             {parsedPreview.constraints && parsedPreview.constraints.length > 0 && (
               <div className="pt-2 border-t border-border">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Einschränkungen</p>
@@ -306,7 +411,6 @@ export function StoryInputStep() {
             )}
           </div>
 
-          {/* Continue Button */}
           <div className="mt-5 pt-4 border-t border-border flex justify-end">
             <Button onClick={handleContinue} size="lg">
               Zur Analyse
