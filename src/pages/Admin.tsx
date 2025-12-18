@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, FileText, History, Trash2, Eye, Loader2, AlertTriangle, CheckCircle, Clock, FolderOpen } from 'lucide-react';
+import { LogOut, FileText, History, Trash2, Eye, Loader2, AlertTriangle, CheckCircle, Clock, FolderOpen, Home } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import type { StructuredStoryModel } from '@/types/storyTypes';
@@ -107,10 +107,16 @@ export default function Admin() {
             <FileText className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-semibold">Admin Panel</h1>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Abmelden
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => navigate('/')}>
+              <Home className="h-4 w-4 mr-2" />
+              Zur Hauptseite
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Abmelden
+            </Button>
+          </div>
         </div>
       </header>
 
